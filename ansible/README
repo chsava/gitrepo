@@ -1,0 +1,3 @@
+Author: Cristian Sava
+
+Ansible code for deploying Zabbix monitoring to Openshift cluster.
