@@ -1,0 +1,5 @@
+- hosts: all
+
+  tasks:
+    - name: install ssh key-based authentication
+      authorized_key: user=cristian_sava key="{{ lookup('file', '/Users/cristian_sava/.ssh/id_rsa.pub') }}"

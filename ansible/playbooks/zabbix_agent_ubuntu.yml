@@ -1,0 +1,29 @@
+- hosts: all
+  remote_user: cristian_sava
+  sudo: yes
+  vars:
+    zabbix_server: 100.73.163.76
+    update_cache: "{{ UPDATE_CACHE|default('yes') }}"
+
+
+  tasks:
+    - name: copy zabbix agent package
+      copy: src=../files/zabbix-release_2.4-1+trusty_all.deb dest=/tmp/zabbix-release_2.4-1+trusty_all.deb
+
+    - name: install agent package 
+      apt: deb=/tmp/zabbix-release_2.4-1+trusty_all.deb
+
+    - name: install zabbix agent
+      apt: name=zabbix-agent state=installed update_cache={{ update_cache }}
+
+    - name: configure zabbix agent
+      lineinfile: dest=/etc/zabbix/zabbix_agentd.conf regexp=^Server= line=Server={{ zabbix_server }}
+
+    - name: restart zabbix agent
+      service: name=zabbix-agent state=restarted
+
+    - name: clean up
+      command: rm -f /tmp/zabbix-release_2.4-1+trusty_all.deb
+
+
+

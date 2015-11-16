@@ -1,0 +1,2 @@
+Cmnd_Alias OPENSHIFT = /bin/at , /usr/local/sbin/openshift.at.sh , /usr/local/sbin/openshift.master.pod.running.count.sh , /usr/local/sbin/openshift.master.user.count.sh , /usr/local/sbin/openshift.master.project.count.sh, /usr/local/sbin/openshift.node.ovs.ports.count.sh , /usr/local/sbin/openshift.etcd.retrieve.sh , /usr/local/sbin/openshift.docker.retrieve.sh
+zabbix         ALL=NOPASSWD: OPENSHIFT

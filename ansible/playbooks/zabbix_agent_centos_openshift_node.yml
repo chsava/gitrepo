@@ -1,0 +1,101 @@
+- hosts: all
+  remote_user: cristian_sava
+  sudo: yes
+  vars:
+    zabbix_server: 100.73.163.76
+    zabbix_trap_port: 10051
+
+  tasks:
+    - name: install zabbix agent
+      yum: name=zabbix22-agent state=present
+      register: zagentinstall
+
+    - name: install pip
+      yum: name=python-pip state=present
+      register: pipinstall
+
+    - name: install zbxsend
+      shell: pip install zbxsend
+
+    - name: add zabbix user to zabbix group
+      user: name=zabbix groups=zabbix append=yes shell=/bin/bash
+
+    - name: add zabbix user to sudoers
+      copy: src='../files/openshift/19_zabbix' dest=/etc/sudoers.d/ owner=root group=root mode=0440
+
+    - name: copy zabbix openshift monitoring scripts
+      copy: src='../files/openshift/node/' dest=/usr/local/sbin/ owner=root group=root mode=0754
+      register: zmonitorscripts
+      notify: restart zabbix agent
+
+    - name: configure zabbix agent
+      lineinfile: dest=/etc/zabbix/zabbix_agent.conf regexp=^Server= line=Server=127.0.0.1,{{ zabbix_server }}
+      when: zagentinstall|success
+      notify: restart zabbix agent
+
+    - name: configure zabbix agentd
+      file: path=/var/log/zabbix owner=zabbix group=zabbix
+      when: zagentinstall|success
+      notify: restart zabbix agent
+
+    - lineinfile: dest=/usr/local/sbin/openshift.config.sh regexp=^ZABBIX_SERVER= line=ZABBIX_SERVER={{ zabbix_server }}
+      when: zmonitorscripts|success
+
+    - lineinfile: dest=/usr/local/sbin/openshift.config.sh regexp=^ZABBIX_TRAP_PORT= line=ZABBIX_TRAP_PORT={{ zabbix_trap_port }}
+      when: zmonitorscripts|success
+
+    - lineinfile: dest=/usr/local/sbin/openshift.config.sh regexp=^ZABBIX_HOST= line=ZABBIX_HOST={{ zabbix_host }}
+      when: zmonitorscripts|success
+
+    - lineinfile: dest=/etc/zabbix/zabbix_agentd.conf regexp=^Server= line=Server=127.0.0.1,{{ zabbix_server }}
+      when: zagentinstall|success
+      notify: restart zabbix agent
+
+    - lineinfile: dest=/etc/zabbix/zabbix_agentd.conf regexp=^#?ServerActive= line=#ServerActive={{ zabbix_server }}
+      when: zagentinstall|success
+      notify: restart zabbix agent
+
+    - lineinfile: dest=/etc/zabbix/zabbix_agentd.conf regexp=^#?Hostname= line=#Hostname=
+      when: zagentinstall|success
+      notify: restart zabbix agent
+
+    - lineinfile: dest=/etc/zabbix/zabbix_agentd.conf regexp='^#? ?EnableRemoteCommands=' line=EnableRemoteCommands=1
+      when: zagentinstall|success
+      notify: restart zabbix agent
+
+    - lineinfile: dest=/etc/zabbix/zabbix_agentd.conf regexp=^#?UserParameter=openshift.node.ovs.ports.count line="UserParameter=openshift.node.ovs.ports.count,sudo /usr/local/sbin/openshift.node.ovs.ports.count.sh"
+      when: zagentinstall|success
+      notify: restart zabbix agent
+
+    - lineinfile: dest=/etc/zabbix/zabbix_agentd.conf regexp=^#?UserParameter=docker.registry.retrieve line="UserParameter=docker.registry.retrieve,sudo /usr/local/sbin/openshift.docker.retrieve.sh registry"
+      when: zagentinstall|success
+      notify: restart zabbix agent
+
+    - lineinfile: dest=/etc/zabbix/zabbix_agentd.conf regexp=^#?UserParameter=docker.router.retrieve line="UserParameter=docker.router.retrieve,sudo /usr/local/sbin/openshift.docker.retrieve.sh router"
+      when: zagentinstall|success
+      notify: restart zabbix agent
+
+    - name: get iptables rules
+      shell: iptables -L
+      register: iptablesrules
+      always_run: yes
+
+    - name: add zabbix agent iptable rule
+      command: iptables -A OS_FIREWALL_ALLOW -m state --state NEW -p tcp --dport 10050 -j ACCEPT
+      when: iptablesrules.stdout.find("zabbix-agent") == -1
+      notify:
+            - save iptables
+            - restart iptables
+      ignore_errors: yes
+
+  handlers:
+    - name: save iptables
+      command: service iptables save
+      ignore_errors: yes
+
+    - name: restart iptables
+      service: name=iptables state=restarted
+      ignore_errors: yes
+
+    - name: restart zabbix agent
+      service: name=zabbix-agent state=restarted

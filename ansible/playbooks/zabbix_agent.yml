@@ -1,0 +1,25 @@
+- hosts: all
+  remote_user: root
+  vars:
+    zabbix_server: 100.73.163.76
+
+
+  tasks:
+    - name: install zabbix agent
+      command: wget http://repo.zabbix.com/zabbix/2.2/ubuntu/pool/main/zabbix-release/zabbix-release_2.2-1+trusty_all.deb
+
+      command: dpkg -i zabbix-release_2.2-1+trusty_all.deb
+      command: apt-get update
+      command: apt-get install zabbix-agent
+
+    - name: configure zabbix agent
+      lineinfile: dest=/etc/zabbix/zabbix_agentd.conf regexp=^Server= line=Server={{ zabbix_server }}
+
+    - name: restart zabbix agent
+      service: name=zabbix-agent state=restarted
+
+    - name: clean up
+      command: rm -f zabbix-release_2.2-1+trusty_all.deb
+
+
+

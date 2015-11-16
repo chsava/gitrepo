@@ -1,0 +1,84 @@
+- hosts: all
+  remote_user: cristian_sava
+  sudo: yes
+  vars:
+    zabbix_server: 100.73.163.76
+
+  tasks:
+    - name: install zabbix agent
+      yum: name=zabbix22-agent state=present
+      register: zagentinstall
+
+    - name: add zabbix user to zabbix group
+      user: name=zabbix groups=zabbix append=yes
+
+    - name: add zabbix user to sudoers
+      copy: src='../files/openshift/19_zabbix' dest=/etc/sudoers.d/ owner=root group=root mode=0440
+
+    - name: copy zabbix openshift monitoring scripts
+      copy: src='../files/openshift/openshift*' dest=/usr/local/sbin/ owner=root group=root mode=0754
+      copy: src='../files/openshift/create.app.py' dest=/usr/local/sbin/ owner=root group=root mode=0754
+
+    - name: configure zabbix agent
+      lineinfile: dest=/etc/zabbix/zabbix_agent.conf regexp=^Server= line=Server=127.0.0.1,{{ zabbix_server }}
+      when: zagentinstall|success
+      notify: restart zabbix agent
+
+    - name: configure zabbix agentd
+      file: path=/var/log/zabbix owner=zabbix group=zabbix
+      when: zagentinstall|success
+      notify: restart zabbix agent
+
+    - lineinfile: dest=/etc/zabbix/zabbix_agentd.conf regexp=^Server= line=Server=127.0.0.1,{{ zabbix_server }}
+      when: zagentinstall|success
+      notify: restart zabbix agent
+
+    - lineinfile: dest=/etc/zabbix/zabbix_agentd.conf regexp=^#?ServerActive= line=#ServerActive={{ zabbix_server }}
+      when: zagentinstall|success
+      notify: restart zabbix agent
+
+    - lineinfile: dest=/etc/zabbix/zabbix_agentd.conf regexp=^#?Hostname= line=#Hostname=
+      when: zagentinstall|success
+      notify: restart zabbix agent
+
+    - lineinfile: dest=/etc/zabbix/zabbix_agentd.conf regexp=^#?UserParameter=openshift.master.pod.running.count line="UserParameter=openshift.master.pod.running.count,sudo /usr/local/sbin/openshift.master.pod.running.count.sh"
+      when: zagentinstall|success
+      notify: restart zabbix agent
+
+    - lineinfile: dest=/etc/zabbix/zabbix_agentd.conf regexp=^#?UserParameter=openshift.master.user.count line="UserParameter=openshift.master.user.count,sudo /usr/local/sbin/openshift.master.user.count.sh"
+      when: zagentinstall|success
+      notify: restart zabbix agent
+
+    - lineinfile: dest=/etc/zabbix/zabbix_agentd.conf regexp=^#?UserParameter=openshift.master.project.count line="UserParameter=openshift.master.project.count,sudo /usr/local/sbin/openshift.master.project.count.sh"
+      when: zagentinstall|success
+      notify: restart zabbix agent
+
+    - lineinfile: dest=/etc/zabbix/zabbix_agentd.conf regexp=^#?UserParameter=openshift.master.process.count line="UserParameter=openshift.master.process.count,sudo /usr/local/sbin/openshift.master.process.count.sh '^/usr/bin/openshift start master'"
+      when: zagentinstall|success
+      notify: restart zabbix agent
+
+    - lineinfile: dest=/etc/zabbix/zabbix_agentd.conf regexp=^#?UserParameter=openshift.master.create.app line="UserParameter=openshift.master.create.app,sudo /usr/local/sbin/openshift.master.create.app.sh"
+      when: zagentinstall|success
+      notify: restart zabbix agent
+
+    - name: get iptables rules
+      shell: iptables -L
+      register: iptablesrules
+      always_run: yes
+
+    - name: add zabbix agent iptable rule
+      command: iptables -A OS_FIREWALL_ALLOW -m state --state NEW -p tcp --dport 10050 -j ACCEPT
+      when: iptablesrules.stdout.find("zabbix-agent") == -1
+      notify:
+            - save iptables
+            - restart iptables
+
+  handlers:
+    - name: save iptables
+      command: service iptables save
+
+    - name: restart iptables
+      service: name=iptables state=restarted
+
+    - name: restart zabbix agent
+      service: name=zabbix-agent state=restarted
